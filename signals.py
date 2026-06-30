@@ -8,7 +8,8 @@ Per planning.md, this signal must return a JSON-shaped dict with:
 
 Signal 2 (stylometric heuristics) is added in M4 -- not implemented here.
 """
-
+from dotenv import load_dotenv
+load_dotenv("api.env") 
 import json
 import os
 
@@ -34,12 +35,20 @@ of text, judge whether it reads as human-written or AI-generated based on \
 semantic and stylistic coherence (phrasing naturalness, transitions, argument \
 structure, idiosyncrasy vs. genericness).
 
+IMPORTANT: Your score MUST be consistent with your observations. If your \
+observations describe AI-typical traits (generic phrasing, formal/uniform \
+tone, lack of personal voice, formulaic transitions), the score must be HIGH \
+(close to 1). If your observations describe human-typical traits (personal \
+anecdotes, colloquial language, irregular structure, idiosyncratic phrasing), \
+the score must be LOW (close to 0). Do not contradict your own reasoning.
+
 Respond with ONLY a JSON object, no other text, in exactly this shape:
 {
   "score": <float between 0 and 1, where 0 = confidently human and 1 = confidently AI>,
   "observations": [<1 to 4 short strings, each a specific textual cue you noticed>]
 }
 """
+
 
 
 def signal1_llm_score(text: str) -> dict:
