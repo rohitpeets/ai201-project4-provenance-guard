@@ -2,6 +2,65 @@
 
 A backend system that classifies submitted text as likely AI-generated, likely human-written, or uncertain, using two independent signals, a confidence score, transparency labels, an appeals workflow, rate limiting, and an audit log.
 
+## Architecture overview
+
+A submission travels through six stages before a creator sees a result.
+
+`POST /submit` receives the raw text and `creator_id`. The text is passed independently to both detection signals: Signal 1 (LLM-based, via Groq) returns a semantic score and observations; Signal 2 (stylometric heuristics, pure Python) returns a structural score, raw metrics, and observations. Neither signal sees the other's output.
+
+Both scores feed into confidence scoring, which produces a `combined_score`, an `agreement_gap` (how far apart the two signals landed), and an `attribution` (`likely_ai` / `likely_human` / `uncertain`) — using the weighting and thresholds from planning.md, including the override that forces "uncertain" when the signals disagree by more than 0.4.
+
+The attribution and scores then generate the transparency label — the exact text a creator sees, picked from the three (really four, counting the split uncertain case) variants written out below.
+
+In parallel, a structured entry is written to the audit log — timestamp, content ID, attribution, combined confidence, both individual signal scores, and an `appealed` flag — before the response (`content_id`, `attribution`, `confidence`, `label`) is returned to the caller.
+
+If a creator later disputes the result, `POST /appeal` looks up the original submission by `content_id`, verifies the appealing `creator_id` matches the original submitter, and — on a match — updates the submission's status to `under_review` in place (the original scores are preserved, not overwritten) and writes a new linked audit log entry. A mismatched `creator_id` is rejected with 403 and the rejected attempt is itself logged.
+
+```
+SUBMISSION FLOW
+
+  POST /submit (text, creator_id)
+       |
+       v
+  Signal 1: LLM (Groq) -> score, observations
+       |
+       v
+  Signal 2: Stylometrics -> score, metrics, observations
+       |
+       v
+  Confidence scoring -> combined_score, agreement_gap, attribution
+       |
+   +---+---+
+   |       |
+   v       v
+Transparency   Audit log
+label (text)   (full record)
+   |       |
+   +---+---+
+       v
+Response (content_id, attribution, confidence, label)
+
+
+APPEAL FLOW
+
+  POST /appeal (content_id, creator_id, creator_reasoning)
+       |
+       v
+  Verify creator_id matches original submission
+       |
+   +---+---+
+   |       |
+ match   mismatch
+   |       |
+   v       v
+Status -> under_review     403 Forbidden (logged)
+   |
+   v
+Audit log (appeal record, linked by content_id)
+   |
+   v
+Response (appeal_id, status: under_review)
+```
 ## Detection signals
 
 **Signal 1: LLM-based classification**
